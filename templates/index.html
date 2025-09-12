@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="hero-section text-center py-5">
+            <h1 class="display-4 text-primary">📺 OTT Subscription Manager</h1>
+            <p class="lead">Manage your OTT subscriptions with automated reminders via Telegram bot.</p>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-6 mb-4">
+                <div class="card feature-card h-100">
+                    <div class="card-body text-center">
+                        <div class="feature-icon">📱</div>
+                        <h5 class="card-title">Telegram Bot</h5>
+                        <p class="card-text">Get automated reminders and manage subscriptions via Telegram commands.</p>
+                        <div class="mt-3">
+                            <code>/add</code> - Add subscription<br>
+                            <code>/list</code> - View all<br>
+                            <code>/delete</code> - Remove subscription
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-4">
+                <div class="card feature-card h-100">
+                    <div class="card-body text-center">
+                        <div class="feature-icon">💻</div>
+                        <h5 class="card-title">Web Dashboard</h5>
+                        <p class="card-text">Manage your subscriptions through this beautiful web interface.</p>
+                        <a href="/dashboard" class="btn btn-success mt-3">Open Dashboard</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">🔥 Features</h5>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <ul class="list-unstyled">
+                                    <li>✅ Multi-admin support</li>
+                                    <li>✅ Cloud database (Firebase)</li>
+                                    <li>✅ Automated reminders</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-4">
+                                <ul class="list-unstyled">
+                                    <li>⏰ Smart scheduling</li>
+                                    <li>🔍 Search functionality</li>
+                                    <li>📊 Real-time statistics</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-4">
+                                <ul class="list-unstyled">
+                                    <li>💰 Payment tracking</li>
+                                    <li>📝 Notes support</li>
+                                    <li>🔄 Easy renewal</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card sticky-top">
+            <div class="card-header">
+                <h5>📊 Quick Stats</h5>
+            </div>
+            <div class="card-body" id="quick-stats">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load quick stats
+fetch('/api/stats')
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('quick-stats').innerHTML = `
+            <div class="row text-center">
+                <div class="col-6 mb-3">
+                    <div class="stat-item">
+                        <h3 class="text-primary mb-1">${data.total}</h3>
+                        <small class="text-muted">Total</small>
+                    </div>
+                </div>
+                <div class="col-6 mb-3">
+                    <div class="stat-item">
+                        <h3 class="text-success mb-1">${data.active}</h3>
+                        <small class="text-muted">Active</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="stat-item">
+                        <h3 class="text-warning mb-1">${data.expiring_soon}</h3>
+                        <small class="text-muted">Expiring Soon</small>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="stat-item">
+                        <h3 class="text-danger mb-1">${data.expired}</h3>
+                        <small class="text-muted">Expired</small>
+                    </div>
+                </div>
+            </div>
+        `;
+    })
+    .catch(error => {
+        document.getElementById('quick-stats').innerHTML = '<p class="text-muted">Unable to load stats</p>';
+    });
+</script>
+{% endblock %}

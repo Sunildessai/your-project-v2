@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - OTT Manager{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- User Info Card -->
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5><i class="fas fa-user"></i> Account Info</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>ID:</strong> {{ user_data.unique_id }}</p>
+                <p><strong>Plan:</strong> {{ subscription_plans[user_data.plan_type].name }}</p>
+                <p><strong>Role:</strong> {{ user_data.role.title() }}</p>
+                <p><strong>Subscriptions:</strong> {{ subscriptions|length }}/{{ user_data.max_subscriptions }}</p>
+                <button class="btn btn-outline-primary btn-sm" onclick="executeCommand('stats')">
+                    <i class="fas fa-chart-bar"></i> View Stats
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions Card -->
+    <div class="col-md-8 mb-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5><i class="fas fa-bolt"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-success w-100" onclick="quickAdd()">
+                            <i class="fas fa-plus"></i> Add Subscription
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-info w-100" onclick="executeCommand('list')">
+                            <i class="fas fa-list"></i> List All
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-warning w-100" onclick="quickSearch()">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-secondary w-100" onclick="executeCommand('sendreminder')">
+                            <i class="fas fa-bell"></i> Send Reminders
+                        </button>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-primary w-100" onclick="executeCommand('help')">
+                            <i class="fas fa-question-circle"></i> Help
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-purple w-100" onclick="executeCommand('upgrade')" style="background-color: #6f42c1; border-color: #6f42c1; color: white;">
+                            <i class="fas fa-arrow-up"></i> Upgrade Plan
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Subscriptions List -->
+<div class="card">
+    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+        <h5><i class="fas fa-tv"></i> Your Subscriptions</h5>
+        <button class="btn btn-light btn-sm" onclick="window.location.reload()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+    <div class="card-body">
+        {% if subscriptions %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Service</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Expiry Date</th>
+                            <th>Status</th>
+                            <th>Amount</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sub in subscriptions %}
+                        {% set expiry_date = sub.expiry %}
+                        {% set today = moment().format('YYYY-MM-DD') %}
+                        {% set days_left = moment(expiry_date).diff(moment(), 'days') %}
+                        <tr>
+                            <td>
+                                <strong>{{ sub.service }}</strong>
+                                <br><small class="text-muted">ID: {{ sub.id[:8] }}...</small>
+                            </td>
+                            <td>{{ sub.username }}</td>
+                            <td>{{ sub.email }}</td>
+                            <td>{{ sub.expiry }}</td>
+                            <td>
+                                {% if days_left < 0 %}
+                                    <span class="badge bg-danger">🔴 Expired</span>
+                                {% elif days_left <= 3 %}
+                                    <span class="badge bg-warning">🟡 Expiring Soon</span>
+                                {% else %}
+                                    <span class="badge bg-success">✅ Active</span>
+                                {% endif %}
+                                <br><small>({{ days_left }} days)</small>
+                            </td>
+                            <td>₹{{ sub.amount_received or 'N/A' }}</td>
+                            <td>
+                                <button class="btn btn-danger btn-sm" onclick="deleteSubscription('{{ sub.id }}')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center py-4">
+                <i class="fas fa-tv fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No Subscriptions Found</h5>
+                <p class="text-muted">Add your first subscription to get started!</p>
+                <button class="btn btn-primary" onclick="quickAdd()">
+                    <i class="fas fa-plus"></i> Add First Subscription
+                </button>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Available Commands -->
+<div class="card mt-4">
+    <div class="card-header bg-info text-white">
+        <h5><i class="fas fa-terminal"></i> Available Commands</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for cmd_name, cmd_def in commands.items() %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card command-card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <i class="fas fa-chevron-right text-primary"></i> /{{ cmd_name }}
+                        </h6>
+                        <p class="card-text small">{{ cmd_def.description }}</p>
+                        <button class="btn btn-outline-primary btn-sm" onclick="executeCommand('{{ cmd_name }}')">
+                            Execute
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script>
+// Calculate days left for each subscription (client-side for real-time updates)
+document.addEventListener('DOMContentLoaded', function() {
+    const today = moment();
+    document.querySelectorAll('tbody tr').forEach(function(row) {
+        const expiryCell = row.cells[3];
+        const statusCell = row.cells[4];
+        const expiryDate = moment(expiryCell.textContent.trim());
+        const daysLeft = expiryDate.diff(today, 'days');
+
+        // Update status badge
+        let statusHTML;
+        if (daysLeft < 0) {
+            statusHTML = '<span class="badge bg-danger">🔴 Expired</span>';
+        } else if (daysLeft <= 3) {
+            statusHTML = '<span class="badge bg-warning">🟡 Expiring Soon</span>';
+        } else {
+            statusHTML = '<span class="badge bg-success">✅ Active</span>';
+        }
+        statusHTML += `<br><small>(${daysLeft} days)</small>`;
+        statusCell.innerHTML = statusHTML;
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,14 @@
+python-telegram-bot==20.7
+APScheduler==3.10.4
+Flask==3.0.3
+firebase-admin==6.3.0
+flask-cors==4.0.0
+Flask-Login==0.6.3
+Flask-Mail==0.9.1
+Flask-WTF==1.1.1
+WTForms==3.0.1
+Werkzeug>=3.0.0
+pandas==1.5.3
+numpy==1.26.4
+gunicorn==21.2.0
+Jinja2==3.1.2

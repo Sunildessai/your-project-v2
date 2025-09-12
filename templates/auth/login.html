@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Login - OTT Manager{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6 col-lg-5">
+        <div class="card shadow">
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <h2 class="card-title">🔐 Access Your Account</h2>
+                    <p class="text-muted">Enter your Unique ID</p>
+                </div>
+                
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form method="POST">
+                    <div class="mb-4">
+                        <label for="unique_id" class="form-label">Unique ID</label>
+                        <input type="text" class="form-control form-control-lg" id="unique_id" name="unique_id" 
+                               placeholder="Enter your Unique ID" 
+                               required style="text-transform: uppercase;">
+                        <div class="form-text">Your unique access ID (e.g., OTTABC12345 or FREE12345678)</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100 btn-lg">🚀 Login</button>
+                </form>
+                
+                <hr class="my-4">
+                
+                <div class="text-center">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">🆓 New User? Get Free Access!</h6>
+                            <p class="card-text mb-3">Get instant free access with 5 OTT subscriptions</p>
+                            
+                            <a href="https://t.me/OTT_MANAGER_BOT" class="btn btn-success w-100 mb-2" target="_blank">
+                                🤖 Start Telegram Bot
+                                <br><small>Get Free Unique ID instantly!</small>
+                            </a>
+                            
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <h6>💰 Upgrade Plans Available:</h6>
+                                    <small>
+                                        • Basic: ₹299/month (15 subs)<br>
+                                        • Premium: ₹599/month (30 subs)<br>
+                                        • Enterprise: ₹999/month (100 subs)
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('unique_id').addEventListener('input', function(e) {
+    e.target.value = e.target.value.toUpperCase();
+});
+</script>
+{% endblock %}

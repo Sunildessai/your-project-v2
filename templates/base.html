@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}OTT Manager{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .card { border-radius: 15px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+        .btn-primary { background: linear-gradient(45deg, #667eea, #764ba2); border: none; }
+        .command-card { transition: transform 0.2s; }
+        .command-card:hover { transform: translateY(-2px); }
+        .status-active { color: #28a745; }
+        .status-expiring { color: #ffc107; }
+        .status-expired { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/"><i class="fas fa-tv"></i> OTT Manager</a>
+            <div class="navbar-nav ms-auto">
+                {% if current_user.is_authenticated %}
+                    <span class="navbar-text me-3">Welcome, {{ current_user.telegram_username }}!</span>
+                    <a class="nav-link" href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                {% else %}
+                    <a class="nav-link" href="/login"><i class="fas fa-sign-in-alt"></i> Login</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category=='error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Command Modal -->
+    <div class="modal fade" id="commandModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="commandModalTitle">Execute Command</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="commandForm">
+                        <div id="commandInputs"></div>
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary">Execute</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Unified command execution
+        async function executeCommand(command, args = {}) {
+            const chatId = {{ current_user.telegram_chat_id if current_user.is_authenticated else 'null' }};
+            const username = '{{ current_user.telegram_username if current_user.is_authenticated else '' }}';
+
+            if (!chatId) {
+                alert('Please login to execute commands');
+                return;
+            }
+
+            // Build command string
+            let commandStr = '/' + command;
+            if (Object.keys(args).length > 0) {
+                commandStr += ' ' + Object.values(args).filter(v => v).join(' ');
+            }
+
+            try {
+                const response = await fetch('/api/telegram-command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        username: username,
+                        message: commandStr,
+                        source: 'web'
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    if (result.web_redirect) {
+                        window.location.href = result.web_redirect;
+                    } else {
+                        showResult(result.message, 'success');
+                        if (command === 'list' || command === 'add' || command === 'delete') {
+                            setTimeout(() => window.location.reload(), 1500);
+                        }
+                    }
+                } else {
+                    showResult(result.message, 'error');
+                }
+            } catch (error) {
+                showResult('Network error: ' + error.message, 'error');
+            }
+        }
+
+        function showResult(message, type) {
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-danger';
+            const alertHtml = `<div class="alert ${alertClass} alert-dismissible fade show mt-3" role="alert">
+                ${message.replace(/\*\*/g, '<strong>').replace(/\*/g, '</strong>').replace(/`([^`]+)`/g, '<code>$1</code>')}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>`;
+            document.querySelector('.container').insertAdjacentHTML('afterbegin', alertHtml);
+        }
+
+        // Quick command functions
+        function quickAdd() {
+            const username = prompt('Username:');
+            const email = prompt('Email:');
+            const service = prompt('Service (e.g., Netflix):');
+            const expiry = prompt('Expiry Date (YYYY-MM-DD):');
+            const amount = prompt('Amount (optional):') || '0';
+
+            if (username && email && service && expiry) {
+                executeCommand('add', { username, email, service, expiry, amount });
+            }
+        }
+
+        function quickSearch() {
+            const keyword = prompt('Search for:');
+            if (keyword) {
+                executeCommand('search', { keyword });
+            }
+        }
+
+        function deleteSubscription(subId) {
+            if (confirm('Are you sure you want to delete this subscription?')) {
+                executeCommand('delete', { subscription_id: subId });
+            }
+        }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
