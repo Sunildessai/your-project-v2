@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified Command Processor with Telegram ID Tracking
+Unified Command Processor with Telegram ID Tracking and Fixed Email Routing
 Handles all commands from both Telegram and Web interfaces
 """
 
@@ -576,7 +576,7 @@ Use `/help` for complete command list!"""
             )
 
     def _handle_sendreminder(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /sendreminder command"""
+        """Handle /sendreminder command - FIXED to send individual emails to each customer"""
         try:
             from flask_mail import Message
 
@@ -602,51 +602,78 @@ Use `/help` for complete command list!"""
                     message="✅ **No urgent reminders needed!**\n\nNo subscriptions are expiring in the next 7 days.\n\n💡 **Tip:** Use `/list` to see all subscription expiry dates."
                 )
 
-            # Get the first email for sending
-            recipient_email = expiring_subs[0]['email']
-
-            # Build email content
-            email_content = f"""
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #333;">Dear {user_data.get('telegram_username', 'User')},</h2>
-                <p>You have {len(expiring_subs)} subscription(s) expiring soon:</p>
-                <ul style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
-            """
-
+            # Group subscriptions by customer email
+            email_groups = {}
             for sub in expiring_subs:
-                email_content += f"<li><strong>{sub['service']}</strong> ({sub['username']}) - Expires: {sub['expiry']}"
-                if sub.get('customer_telegram_id'):
-                    email_content += f" | Customer: {sub['customer_telegram_id']}"
-                email_content += "</li>"
+                email = sub['email']
+                if email not in email_groups:
+                    email_groups[email] = []
+                email_groups[email].append(sub)
 
-            email_content += """
-                </ul>
-                <p>Please renew these subscriptions to avoid service interruption.</p>
-                <p style="margin-top: 30px;">Best regards,<br><strong>OTT Manager Team</strong></p>
-                <hr>
-                <small style="color: #666;">Manage your subscriptions: <a href="https://your-project-v2.onrender.com">OTT Manager Dashboard</a></small>
-            </div>
-            """
+            sent_count = 0
+            email_summary = []
+            failed_emails = []
 
-            # Send email reminder
-            msg = Message(
-                subject="🔔 OTT Subscription Expiry Reminder",
-                recipients=[recipient_email],
-                html=email_content
-            )
+            # Send separate email to each customer
+            for customer_email, customer_subs in email_groups.items():
+                try:
+                    # Build email content for this specific customer
+                    email_content = f"""
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #333;">Dear Customer,</h2>
+                        <p>You have {len(customer_subs)} subscription(s) expiring soon:</p>
+                        <ul style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
+                    """
 
-            self.mail.send(msg)
+                    for sub in customer_subs:
+                        email_content += f"<li><strong>{sub['service']}</strong> ({sub['username']}) - Expires: {sub['expiry']}"
+                        if sub.get('customer_telegram_id'):
+                            email_content += f" | Telegram: {sub['customer_telegram_id']}"
+                        email_content += "</li>"
 
-            sub_list = "\n".join([
-                f"• {sub['service']} ({sub['username']}) - {sub['expiry']}" + 
-                (f" | {sub['customer_telegram_id']}" if sub.get('customer_telegram_id') else "")
-                for sub in expiring_subs
-            ])
+                    email_content += """
+                        </ul>
+                        <p>Please renew these subscriptions to avoid service interruption.</p>
+                        <p style="margin-top: 30px;">Best regards,<br><strong>OTT Manager Team</strong></p>
+                        <hr>
+                        <small style="color: #666;">Manage your subscriptions: <a href="https://your-project-v2.onrender.com">OTT Manager Dashboard</a></small>
+                    </div>
+                    """
+
+                    # Send individual email
+                    msg = Message(
+                        subject="🔔 OTT Subscription Expiry Reminder",
+                        recipients=[customer_email],
+                        html=email_content
+                    )
+
+                    self.mail.send(msg)
+                    sent_count += 1
+                    email_summary.append(f"• {customer_email} ({len(customer_subs)} subscription(s))")
+
+                except Exception as e:
+                    failed_emails.append(f"• {customer_email} - FAILED: {str(e)}")
+
+            # Build response message
+            summary_text = "\n".join(email_summary)
+
+            response_message = f"✅ **Reminders sent successfully!**\n\n📧 **Emails sent:** {sent_count}/{len(email_groups)}\n\n**Recipients:**\n{summary_text}"
+
+            if failed_emails:
+                failed_text = "\n".join(failed_emails)
+                response_message += f"\n\n❌ **Failed sends:**\n{failed_text}"
+
+            response_message += "\n\n💡 **Each customer received their own personalized reminder with only their subscriptions.**"
 
             return CommandResponse(
                 success=True,
-                message=f"✅ **Reminder sent successfully!**\n\n📧 **Email sent to:** {recipient_email}\n\n**Expiring subscriptions ({len(expiring_subs)}):**\n{sub_list}\n\n💡 **Tip:** Check your email inbox (and spam folder) for the detailed reminder.",
-                data={'expiring_subscriptions': expiring_subs}
+                message=response_message,
+                data={
+                    'expiring_subscriptions': expiring_subs, 
+                    'emails_sent': sent_count,
+                    'unique_customers': len(email_groups),
+                    'failed_sends': len(failed_emails)
+                }
             )
 
         except Exception as e:
