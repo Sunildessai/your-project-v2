@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Unified Command Processor
-Handles all commands from both Telegram and Web interfaces
+Unified Command Processor - FIXED VERSION
+Handles all commands from both Telegram and Web interfaces with proper validation
 """
 
 import os
@@ -26,7 +26,7 @@ class CommandProcessor:
             if not cmd_def:
                 return CommandResponse(
                     success=False,
-                    message=f"❌ **Unknown command:** `{command_name}`\n\nUse `/help` to see available commands."
+                    message=f"❌ **Unknown command:** `{command_name}`\n\nUse `/help` to see available commands.\n\n**Popular commands:**\n• `/start` - Get started\n• `/list` - View subscriptions\n• `/add` - Add subscription\n• `/help` - Show help"
                 )
 
             # Check permissions
@@ -34,15 +34,7 @@ class CommandProcessor:
             if user_role not in cmd_def.permissions:
                 return CommandResponse(
                     success=False,
-                    message="❌ **Permission denied**\n\nYou don't have permission to use this command."
-                )
-
-            # Validate arguments
-            is_valid, validation_msg = validate_command_args(command_name, args)
-            if not is_valid:
-                return CommandResponse(
-                    success=False,
-                    message=f"❌ **Invalid arguments:** {validation_msg}\n\n**Usage:** {cmd_def.help_text}\n\n**Examples:**\n" + "\n".join([f"• `{ex}`" for ex in cmd_def.examples])
+                    message="❌ **Permission denied**\n\nYou don't have permission to use this command.\n\nYour role: `" + user_role + "`\nRequired: `" + "`, `".join(cmd_def.permissions) + "`"
                 )
 
             # Route to specific command handler
@@ -52,13 +44,13 @@ class CommandProcessor:
             else:
                 return CommandResponse(
                     success=False,
-                    message=f"❌ Command handler not implemented: {command_name}"
+                    message=f"❌ Command handler not implemented: `{command_name}`\n\nThis command is recognized but not yet implemented. Please contact support."
                 )
 
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Error processing command:** {str(e)[:100]}"
+                message=f"❌ **Error processing command:** {str(e)[:100]}\n\nPlease try again or contact support if the problem persists."
             )
 
     def _handle_start(self, args: List[str], user_data: Dict) -> CommandResponse:
@@ -74,7 +66,12 @@ class CommandProcessor:
 **🌐 Web Dashboard:**
 https://your-project-v2.onrender.com
 
-Use `/help` for all commands!"""
+**🚀 Quick Start:**
+• `/add username email service expiry` - Add subscription
+• `/list` - View all subscriptions  
+• `/help` - Show all commands
+
+Use `/help` for complete command list!"""
 
         return CommandResponse(
             success=True,
@@ -92,7 +89,7 @@ Use `/help` for all commands!"""
             if not subscriptions:
                 return CommandResponse(
                     success=True,
-                    message="📋 **No Subscriptions Found**\n\nUse `/add username email service expiry` to add your first subscription!",
+                    message="📋 **No Subscriptions Found**\n\nGet started by adding your first subscription:\n\n**Example:**\n`/add john_netflix john@gmail.com Netflix 2025-12-31`\n\nThis adds Netflix subscription for john_netflix that expires on Dec 31, 2025.",
                     data={'subscriptions': []}
                 )
 
@@ -105,15 +102,19 @@ Use `/help` for all commands!"""
                 sub_data['id'] = sub.id
                 subscription_data.append(sub_data)
 
-                expiry_date = datetime.strptime(sub_data['expiry'], '%Y-%m-%d').date()
-                days_left = (expiry_date - today).days
+                try:
+                    expiry_date = datetime.strptime(sub_data['expiry'], '%Y-%m-%d').date()
+                    days_left = (expiry_date - today).days
 
-                if days_left < 0:
-                    status = "🔴 EXPIRED"
-                elif days_left <= 3:
-                    status = "🟡 EXPIRING SOON"
-                else:
-                    status = "✅ ACTIVE"
+                    if days_left < 0:
+                        status = "🔴 EXPIRED"
+                    elif days_left <= 3:
+                        status = "🟡 EXPIRING SOON"
+                    else:
+                        status = "✅ ACTIVE"
+                except:
+                    status = "❓ UNKNOWN"
+                    days_left = 0
 
                 message += f"**{i}. {sub_data['service']}** {status}\n"
                 message += f"🆔 ID: `{sub.id[:8]}`\n"
@@ -122,6 +123,8 @@ Use `/help` for all commands!"""
                 message += f"💰 Amount: ₹{sub_data.get('amount_received', 'N/A')}\n"
                 message += f"📅 Expires: `{sub_data['expiry']}` ({days_left} days)\n"
                 message += "─────────────────────\n\n"
+
+            message += "💡 **Tip:** Use `/delete ID` to remove a subscription (e.g., `/delete " + subscriptions[0].id[:8] + "`)"
 
             return CommandResponse(
                 success=True,
@@ -132,22 +135,40 @@ Use `/help` for all commands!"""
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Error fetching subscriptions:** {str(e)}"
+                message=f"❌ **Error fetching subscriptions:** {str(e)}\n\nPlease try again or contact support."
             )
 
     def _handle_add(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /add command"""
+        """Handle /add command with improved validation"""
+        if len(args) < 4:
+            return CommandResponse(
+                success=False,
+                message='❌ **Missing required information!**\n\n**Usage:** `/add username email service expiry [amount]`\n\n**Examples:**\n• `/add john_netflix john@gmail.com Netflix 2025-12-31`\n• `/add jane_spotify jane@gmail.com Spotify 2025-06-15 299`\n\n**Required:**\n• `username` - Your account username\n• `email` - Your email address\n• `service` - Service name (Netflix, Disney+, etc.)\n• `expiry` - Expiry date (YYYY-MM-DD format)\n\n**Optional:**\n• `amount` - Amount paid (₹)'
+            )
+
         try:
             username, email, service, expiry = args[:4]
             amount = ' '.join(args[4:]) if len(args) > 4 else "0"
 
-            # Validate date
+            # Validate email format
+            if '@' not in email or '.' not in email:
+                return CommandResponse(
+                    success=False,
+                    message="❌ **Invalid email format!**\n\nPlease provide a valid email address.\n\n**Example:** `john@gmail.com`"
+                )
+
+            # Validate date format
             try:
-                datetime.strptime(expiry, '%Y-%m-%d')
+                expiry_date = datetime.strptime(expiry, '%Y-%m-%d').date()
+                if expiry_date < datetime.now().date():
+                    return CommandResponse(
+                        success=False,
+                        message="❌ **Expiry date is in the past!**\n\nPlease provide a future date.\n\n**Format:** YYYY-MM-DD\n**Example:** `2025-12-31`"
+                    )
             except ValueError:
                 return CommandResponse(
                     success=False,
-                    message="❌ **Invalid date format!** Use YYYY-MM-DD (e.g., 2025-12-31)"
+                    message="❌ **Invalid date format!**\n\n**Required format:** YYYY-MM-DD\n\n**Examples:**\n• `2025-12-31` (Dec 31, 2025)\n• `2025-06-15` (Jun 15, 2025)\n• `2026-01-01` (Jan 1, 2026)"
                 )
 
             # Check user limits
@@ -156,9 +177,10 @@ Use `/help` for all commands!"""
 
             max_subs = user_data.get('max_subscriptions', 5)
             if max_subs != 999999 and current_count >= max_subs:
+                plan_name = self.subscription_plans[user_data['plan_type']]['name']
                 return CommandResponse(
                     success=False,
-                    message="❌ **Subscription limit reached!**\n\nUpgrade your plan to add more subscriptions.",
+                    message=f"❌ **Subscription limit reached!**\n\n**Current plan:** {plan_name}\n**Limit:** {max_subs} subscriptions\n**Used:** {current_count}/{max_subs}\n\n**Solution:**\nUpgrade your plan to add more subscriptions.\nUse `/upgrade` to see available plans.",
                     web_redirect='/upgrade'
                 )
 
@@ -178,7 +200,7 @@ Use `/help` for all commands!"""
 
             return CommandResponse(
                 success=True,
-                message=f"✅ **Subscription Added!**\n\n🎬 Service: {service}\n👤 Username: {username}\n📧 Email: {email}\n💰 Amount: ₹{amount}\n📅 Expiry: {expiry}",
+                message=f"✅ **Subscription Added Successfully!**\n\n🎬 **Service:** {service}\n👤 **Username:** {username}\n📧 **Email:** {email}\n💰 **Amount:** ₹{amount}\n📅 **Expires:** {expiry}\n🆔 **ID:** `{doc_ref[1].id[:8]}`\n\n💡 Use `/list` to see all your subscriptions!",
                 data={'subscription_id': doc_ref[1].id, 'subscription': subscription_data},
                 web_redirect='/dashboard'
             )
@@ -186,17 +208,30 @@ Use `/help` for all commands!"""
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Error adding subscription:** {str(e)}"
+                message=f"❌ **Error adding subscription:** {str(e)}\n\nPlease check your information and try again."
             )
 
     def _handle_delete(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /delete command"""
+        """Handle /delete command with improved error messages"""
+        if not args:
+            return CommandResponse(
+                success=False,
+                message='❌ **Subscription ID required!**\n\n**Usage:** `/delete subscription_id`\n\n**Examples:**\n• `/delete abc12345`\n• `/delete gRNNegwP`\n\n**📋 To get subscription IDs:**\n1. Use `/list` command\n2. Copy the 8-character ID shown\n3. Use that ID with `/delete`\n\n💡 **Tip:** You only need the first 8 characters of the ID!'
+            )
+
         try:
             sub_id = args[0]
             chat_id = user_data.get('telegram_chat_id')
 
             # Find subscription
             all_subs = list(self.db.collection('subscriptions').where('telegram_chat_id', '==', chat_id).stream())
+
+            if not all_subs:
+                return CommandResponse(
+                    success=False,
+                    message="📋 **No subscriptions found!**\n\nYou don't have any subscriptions to delete.\n\nUse `/add` to add your first subscription."
+                )
+
             target_sub = None
             target_id = None
 
@@ -207,12 +242,18 @@ Use `/help` for all commands!"""
                     break
 
             if not target_sub:
-                available_ids = [sub.id[:8] for sub in all_subs[:5]]
-                ids_text = '\n'.join([f"• `{sub_id}`" for sub_id in available_ids]) if available_ids else "• No subscriptions found"
+                available_subs = []
+                for sub in all_subs[:3]:  # Show first 3 subscriptions
+                    sub_data = sub.to_dict()
+                    available_subs.append(f"• `{sub.id[:8]}` - {sub_data.get('service', 'Unknown')}")
+
+                subs_text = '\n'.join(available_subs)
+                if len(all_subs) > 3:
+                    subs_text += f"\n• ... and {len(all_subs) - 3} more"
 
                 return CommandResponse(
                     success=False,
-                    message=f"❌ **Subscription not found!**\n\n🔍 **Searched for:** `{sub_id}`\n\n**Available IDs:**\n{ids_text}\n\nUse `/list` to see all subscriptions."
+                    message=f"❌ **Subscription not found!**\n\n🔍 **Searched for:** `{sub_id}`\n\n**Available subscriptions:**\n{subs_text}\n\n💡 **Tips:**\n• Use `/list` to see all subscriptions\n• Make sure to copy the ID exactly\n• You can use partial IDs (first 8 characters)"
                 )
 
             # Delete subscription
@@ -220,7 +261,7 @@ Use `/help` for all commands!"""
 
             return CommandResponse(
                 success=True,
-                message=f"✅ **Successfully Deleted!**\n\n🎬 **Service:** {target_sub.get('service', 'Unknown')}\n👤 **Username:** {target_sub.get('username', 'Unknown')}\n📧 **Email:** {target_sub.get('email', 'Unknown')}\n🗑️ **ID:** `{target_id[:8]}`",
+                message=f"✅ **Successfully Deleted!**\n\n🎬 **Service:** {target_sub.get('service', 'Unknown')}\n👤 **Username:** {target_sub.get('username', 'Unknown')}\n📧 **Email:** {target_sub.get('email', 'Unknown')}\n🗑️ **ID:** `{target_id[:8]}`\n\n💡 Use `/list` to see your remaining subscriptions.",
                 data={'deleted_subscription': target_sub},
                 web_redirect='/dashboard'
             )
@@ -228,11 +269,17 @@ Use `/help` for all commands!"""
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Delete Error:** {str(e)[:100]}"
+                message=f"❌ **Delete Error:** {str(e)[:100]}\n\nPlease try again or contact support."
             )
 
     def _handle_search(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /search command"""
+        """Handle /search command with improved validation"""
+        if not args:
+            return CommandResponse(
+                success=False,
+                message='❌ **Search keyword required!**\n\n**Usage:** `/search keyword`\n\n**Examples:**\n• `/search Netflix` - Find Netflix subscriptions\n• `/search john@gmail.com` - Find by email\n• `/search john_netflix` - Find by username\n\n**💡 What you can search for:**\n• Service names (Netflix, Spotify, Disney+)\n• Email addresses\n• Usernames\n• Any part of subscription details'
+            )
+
         try:
             search_query = args[0].lower()
             chat_id = user_data.get('telegram_chat_id')
@@ -242,7 +289,7 @@ Use `/help` for all commands!"""
             if not subscriptions:
                 return CommandResponse(
                     success=True,
-                    message="📋 **No subscriptions found**\n\nAdd subscriptions first using `/add`",
+                    message="📋 **No subscriptions to search**\n\nYou don't have any subscriptions yet.\n\n**Get started:**\n`/add john_netflix john@gmail.com Netflix 2025-12-31`",
                     data={'results': []}
                 )
 
@@ -261,12 +308,12 @@ Use `/help` for all commands!"""
             if not matching_subs:
                 return CommandResponse(
                     success=True,
-                    message=f"🔍 **No subscriptions found** for `{args[0]}`\n\nTry searching for:\n• Service name (e.g., Netflix)\n• Username (e.g., john_netflix)\n• Email (e.g., john@gmail.com)",
+                    message=f"🔍 **No matches found for** `{args[0]}`\n\n**Search tips:**\n• Try partial matches (e.g., 'Net' for Netflix)\n• Search by service name, email, or username\n• Check spelling\n\n**Your subscriptions:**\nUse `/list` to see all {len(subscriptions)} subscription(s)",
                     data={'results': []}
                 )
 
             # Format results
-            message = f"🔍 **Search Results for** `{args[0]}`:\n\n"
+            message = f"🔍 **Found {len(matching_subs)} result(s) for** `{args[0]}`:\n\n"
             today = datetime.now().date()
 
             for i, sub_data in enumerate(matching_subs, 1):
@@ -290,6 +337,8 @@ Use `/help` for all commands!"""
                 message += f"📅 Expires: `{sub_data['expiry']}` ({days_left} days)\n"
                 message += "─────────────────────\n\n"
 
+            message += f"💡 **Tips:**\n• Use `/delete ID` to remove any subscription\n• Use `/list` to see all {len(subscriptions)} subscription(s)"
+
             return CommandResponse(
                 success=True,
                 message=message,
@@ -299,11 +348,11 @@ Use `/help` for all commands!"""
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Search Error:** {str(e)}"
+                message=f"❌ **Search Error:** {str(e)}\n\nPlease try again with a different keyword."
             )
 
     def _handle_help(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /help command"""
+        """Handle /help command with improved formatting"""
         try:
             user_role = user_data.get('role', 'free')
             available_commands = get_commands_for_role(user_role)
@@ -314,13 +363,14 @@ Use `/help` for all commands!"""
                 cmd_def = get_command(cmd_name)
 
                 if not cmd_def or cmd_name not in available_commands:
+                    available_list = ', '.join([f'`{cmd}`' for cmd in list(available_commands.keys())[:5]])
                     return CommandResponse(
                         success=False,
-                        message=f"❌ **Command not found or not available:** `{cmd_name}`"
+                        message=f"❌ **Command not found:** `{args[0]}`\n\n**Available commands:**\n{available_list}\n\nUse `/help` to see all commands."
                     )
 
                 message = f"📖 **Help for /{cmd_name}**\n\n"
-                message += f"**Description:** {cmd_def.help_text}\n\n"
+                message += f"**Description:**\n{cmd_def.help_text}\n\n"
                 message += f"**Examples:**\n"
                 for example in cmd_def.examples:
                     message += f"• `{example}`\n"
@@ -332,12 +382,39 @@ Use `/help` for all commands!"""
                 )
             else:
                 # General help
-                message = "📖 **Available Commands:**\n\n"
+                message = f"📖 **OTT Manager Bot Help**\n\nYour role: `{user_role}`\n\n**📋 Available Commands:**\n\n"
 
-                for cmd_name, cmd_def in available_commands.items():
-                    message += f"**/{cmd_name}** - {cmd_def.description}\n"
+                # Group commands by category
+                basic_commands = ['start', 'help', 'stats']
+                subscription_commands = ['add', 'list', 'delete', 'search']
+                reminder_commands = ['sendreminder']
+                plan_commands = ['upgrade']
+                admin_commands = ['promote', 'makeadmin', 'removeadmin', 'forcedreminder']
 
-                message += "\n💡 Use `/help command_name` for detailed help on any command!"
+                def add_command_group(title, cmd_list, emoji):
+                    group_message = f"**{emoji} {title}:**\n"
+                    for cmd_name in cmd_list:
+                        if cmd_name in available_commands:
+                            cmd_def = available_commands[cmd_name]
+                            group_message += f"• `/{cmd_name}` - {cmd_def.description}\n"
+                    return group_message + "\n"
+
+                message += add_command_group("Basic Commands", basic_commands, "🏠")
+                message += add_command_group("Subscription Management", subscription_commands, "🎬")
+
+                if any(cmd in available_commands for cmd in reminder_commands):
+                    message += add_command_group("Reminders", reminder_commands, "🔔")
+
+                if any(cmd in available_commands for cmd in plan_commands):
+                    message += add_command_group("Plan Management", plan_commands, "💎")
+
+                if any(cmd in available_commands for cmd in admin_commands):
+                    message += add_command_group("Admin Commands", admin_commands, "👑")
+
+                message += "💡 **Tips:**\n"
+                message += "• Use `/help command_name` for detailed help\n"
+                message += "• Example: `/help add` for add command help\n"
+                message += "• Start with `/add` to add your first subscription!"
 
                 return CommandResponse(
                     success=True,
@@ -348,11 +425,11 @@ Use `/help` for all commands!"""
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Help Error:** {str(e)}"
+                message=f"❌ **Help Error:** {str(e)}\n\nUse basic commands: `/start`, `/list`, `/add`"
             )
 
     def _handle_stats(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /stats command"""
+        """Handle /stats command with better formatting"""
         try:
             chat_id = user_data.get('telegram_chat_id')
             subscriptions = list(self.db.collection('subscriptions').where('telegram_chat_id', '==', chat_id).stream())
@@ -361,6 +438,7 @@ Use `/help` for all commands!"""
             active_subs = 0
             expiring_subs = 0
             expired_subs = 0
+            total_amount = 0
 
             today = datetime.now().date()
 
@@ -376,6 +454,15 @@ Use `/help` for all commands!"""
                         expiring_subs += 1
                     else:
                         active_subs += 1
+
+                    # Calculate total amount
+                    amount_str = sub_data.get('amount_received', '0')
+                    try:
+                        amount = float(amount_str) if amount_str != 'N/A' else 0
+                        total_amount += amount
+                    except:
+                        pass
+
                 except:
                     continue
 
@@ -383,20 +470,25 @@ Use `/help` for all commands!"""
 
             message = f"""📊 **Account Statistics**
 
-👤 **Account Info:**
-🆔 ID: `{user_data['unique_id']}`
-📦 Plan: {plan_info['name']}
-🎭 Role: {user_data['role'].title()}
+👤 **Account Details:**
+🆔 **ID:** `{user_data['unique_id']}`
+📦 **Plan:** {plan_info['name']}
+🎭 **Role:** {user_data['role'].title()}
+💰 **Plan Price:** {plan_info['price']}
 
-📋 **Subscriptions:**
-📈 Total: {total_subs}/{user_data['max_subscriptions']}
-✅ Active: {active_subs}
-🟡 Expiring (≤7 days): {expiring_subs}
-🔴 Expired: {expired_subs}
+📋 **Subscription Overview:**
+📈 **Total:** {total_subs}/{user_data['max_subscriptions']}
+✅ **Active:** {active_subs}
+🟡 **Expiring (≤7 days):** {expiring_subs}
+🔴 **Expired:** {expired_subs}
+💵 **Total Spent:** ₹{total_amount:.0f}
 
 📅 **Plan Details:**
-💰 Price: {plan_info['price']}
-⏳ Validity: {'Lifetime' if not user_data.get('expiry_date') else user_data['expiry_date']}"""
+⏳ **Validity:** {'Lifetime' if not user_data.get('expiry_date') else user_data['expiry_date']}
+🎯 **Usage:** {(total_subs/user_data['max_subscriptions']*100):.1f}% of limit used"""
+
+            if expiring_subs > 0:
+                message += f"\n\n🚨 **Action Required:**\n{expiring_subs} subscription(s) expiring soon!\nUse `/sendreminder` to get email notifications."
 
             return CommandResponse(
                 success=True,
@@ -407,6 +499,7 @@ Use `/help` for all commands!"""
                         'active_subscriptions': active_subs,
                         'expiring_subscriptions': expiring_subs,
                         'expired_subscriptions': expired_subs,
+                        'total_amount': total_amount,
                         'plan_info': plan_info,
                         'user_info': user_data
                     }
@@ -416,7 +509,7 @@ Use `/help` for all commands!"""
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Stats Error:** {str(e)}"
+                message=f"❌ **Stats Error:** {str(e)}\n\nPlease try again later."
             )
 
     def _handle_sendreminder(self, args: List[str], user_data: Dict) -> CommandResponse:
@@ -443,80 +536,100 @@ Use `/help` for all commands!"""
             if not expiring_subs:
                 return CommandResponse(
                     success=True,
-                    message="✅ **No subscriptions expiring** in the next 7 days!"
+                    message="✅ **No urgent reminders needed!**\n\nNo subscriptions are expiring in the next 7 days.\n\n💡 **Tip:** Use `/list` to see all subscription expiry dates."
                 )
+
+            # Get the first email for sending (or use user email if available)
+            recipient_email = expiring_subs[0]['email']
 
             # Send email reminder
             msg = Message(
                 subject="🔔 OTT Subscription Expiry Reminder",
-                recipients=[expiring_subs[0]['email']],
+                recipients=[recipient_email],
                 html=f"""
-                <h2>Dear {user_data['telegram_username']},</h2>
-                <p>You have {len(expiring_subs)} subscription(s) expiring soon:</p>
-                <ul>
-                {"".join([f"<li>{sub['service']} - Expires: {sub['expiry']}</li>" for sub in expiring_subs])}
-                </ul>
-                <p>Please renew to avoid service interruption.</p>
-                <p>Best regards,<br>OTT Manager Team</p>
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #333;">Dear {user_data['telegram_username']},</h2>
+                    <p>You have {len(expiring_subs)} subscription(s) expiring soon:</p>
+                    <ul style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
+                    {"".join([f"<li><strong>{sub['service']}</strong> - Expires: {sub['expiry']}</li>" for sub in expiring_subs])}
+                    </ul>
+                    <p>Please renew these subscriptions to avoid service interruption.</p>
+                    <p style="margin-top: 30px;">Best regards,<br><strong>OTT Manager Team</strong></p>
+                    <hr>
+                    <small style="color: #666;">Manage your subscriptions: <a href="https://your-project-v2.onrender.com">OTT Manager Dashboard</a></small>
+                </div>
                 """
             )
 
             self.mail.send(msg)
 
+            sub_list = "\n".join([f"• {sub['service']} - {sub['expiry']}" for sub in expiring_subs])
+
             return CommandResponse(
                 success=True,
-                message=f"✅ **Reminder sent!** Email notification sent for {len(expiring_subs)} expiring subscription(s).",
+                message=f"✅ **Reminder sent successfully!**\n\n📧 **Email sent to:** {recipient_email}\n\n**Expiring subscriptions ({len(expiring_subs)}):**\n{sub_list}\n\n💡 **Tip:** Check your email inbox (and spam folder) for the detailed reminder.",
                 data={'expiring_subscriptions': expiring_subs}
             )
 
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Reminder Error:** {str(e)}"
+                message=f"❌ **Reminder Error:** {str(e)}\n\nPlease check your email settings or try again later."
             )
 
     def _handle_upgrade(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /upgrade command"""
+        """Handle /upgrade command with better plan display"""
         try:
+            current_plan = user_data['plan_type']
+
             if args and args[0]:
                 plan_type = args[0].lower()
                 if plan_type not in self.subscription_plans:
                     available_plans = list(self.subscription_plans.keys())
+                    plans_text = ', '.join([f'`{plan}`' for plan in available_plans])
                     return CommandResponse(
                         success=False,
-                        message=f"❌ **Invalid plan:** `{plan_type}`\n\n**Available plans:** {', '.join(available_plans)}"
+                        message=f"❌ **Invalid plan:** `{plan_type}`\n\n**Available plans:**\n{plans_text}\n\nUse `/upgrade` to see all plan details."
                     )
 
                 plan_info = self.subscription_plans[plan_type]
+                features_text = "\n".join([f"• {feature}" for feature in plan_info['features']])
+
+                if plan_type == current_plan:
+                    status_msg = "✅ **This is your current plan!**"
+                else:
+                    status_msg = "🔗 **Contact admin to upgrade to this plan**"
+
                 return CommandResponse(
                     success=True,
-                    message=f"💎 **{plan_info['name']}**\n\n💰 **Price:** {plan_info['price']}\n📋 **Subscriptions:** {plan_info['max_subscriptions']}\n\n**Features:**\n" + "\n".join([f"• {feature}" for feature in plan_info['features']]) + "\n\n🔗 Contact admin to upgrade!",
+                    message=f"💎 **{plan_info['name']}**\n\n💰 **Price:** {plan_info['price']}\n📋 **Subscriptions:** {plan_info['max_subscriptions']}\n\n**✨ Features:**\n{features_text}\n\n{status_msg}",
                     data={'plan_info': plan_info},
                     web_redirect='/upgrade'
                 )
             else:
                 # Show all plans
-                message = "💎 **Available Plans:**\n\n"
+                message = f"💎 **Available Subscription Plans**\n\nYour current plan: **{self.subscription_plans[current_plan]['name']}** ✅\n\n"
+
                 for plan_name, plan_info in self.subscription_plans.items():
-                    if plan_name == user_data['plan_type']:
-                        message += f"**{plan_info['name']} (Current)** ✅\n"
+                    if plan_name == current_plan:
+                        message += f"**{plan_info['name']} (CURRENT)** ✅\n"
                     else:
                         message += f"**{plan_info['name']}**\n"
                     message += f"💰 {plan_info['price']}\n"
                     message += f"📋 {plan_info['max_subscriptions']} subscriptions\n"
-                    message += "─────────────────\n\n"
+                    message += "─────────────────\n"
 
-                message += "Use `/upgrade plan_name` for details!"
+                message += "\n💡 **Tips:**\n• Use `/upgrade plan_name` for details\n• Example: `/upgrade premium`\n• Contact admin for plan upgrades"
 
                 return CommandResponse(
                     success=True,
                     message=message,
-                    data={'all_plans': self.subscription_plans, 'current_plan': user_data['plan_type']},
+                    data={'all_plans': self.subscription_plans, 'current_plan': current_plan},
                     web_redirect='/upgrade'
                 )
 
         except Exception as e:
             return CommandResponse(
                 success=False,
-                message=f"❌ **Upgrade Error:** {str(e)}"
+                message=f"❌ **Upgrade Error:** {str(e)}\n\nPlease try again or contact support."
             )
