@@ -93,9 +93,6 @@
                     </thead>
                     <tbody>
                         {% for sub in subscriptions %}
-                        {% set expiry_date = sub.expiry %}
-                        {% set today = moment().format('YYYY-MM-DD') %}
-                        {% set days_left = moment(expiry_date).diff(moment(), 'days') %}
                         <tr>
                             <td>
                                 <strong>{{ sub.service }}</strong>
@@ -105,14 +102,7 @@
                             <td>{{ sub.email }}</td>
                             <td>{{ sub.expiry }}</td>
                             <td>
-                                {% if days_left < 0 %}
-                                    <span class="badge bg-danger">🔴 Expired</span>
-                                {% elif days_left <= 3 %}
-                                    <span class="badge bg-warning">🟡 Expiring Soon</span>
-                                {% else %}
-                                    <span class="badge bg-success">✅ Active</span>
-                                {% endif %}
-                                <br><small>({{ days_left }} days)</small>
+                                <span class="badge bg-info status-badge" data-expiry="{{ sub.expiry }}">Calculating...</span>
                             </td>
                             <td>₹{{ sub.amount_received or 'N/A' }}</td>
                             <td>
@@ -166,28 +156,41 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
 <script>
-// Calculate days left for each subscription (client-side for real-time updates)
+// FIXED VERSION - No moment.js dependency
 document.addEventListener('DOMContentLoaded', function() {
-    const today = moment();
-    document.querySelectorAll('tbody tr').forEach(function(row) {
-        const expiryCell = row.cells[3];
-        const statusCell = row.cells[4];
-        const expiryDate = moment(expiryCell.textContent.trim());
-        const daysLeft = expiryDate.diff(today, 'days');
+    // Calculate days left for each subscription using vanilla JavaScript
+    const today = new Date();
 
-        // Update status badge
-        let statusHTML;
-        if (daysLeft < 0) {
-            statusHTML = '<span class="badge bg-danger">🔴 Expired</span>';
-        } else if (daysLeft <= 3) {
-            statusHTML = '<span class="badge bg-warning">🟡 Expiring Soon</span>';
-        } else {
-            statusHTML = '<span class="badge bg-success">✅ Active</span>';
+    document.querySelectorAll('.status-badge').forEach(function(badge) {
+        const expiryDateStr = badge.getAttribute('data-expiry');
+
+        try {
+            const expiryDate = new Date(expiryDateStr);
+            const timeDiff = expiryDate.getTime() - today.getTime();
+            const daysLeft = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+            let statusHTML;
+            let badgeClass;
+
+            if (daysLeft < 0) {
+                statusHTML = '🔴 EXPIRED';
+                badgeClass = 'bg-danger';
+            } else if (daysLeft <= 3) {
+                statusHTML = '🟡 EXPIRING SOON';
+                badgeClass = 'bg-warning';
+            } else {
+                statusHTML = '✅ ACTIVE';
+                badgeClass = 'bg-success';
+            }
+
+            badge.innerHTML = statusHTML + `<br><small>(${daysLeft} days)</small>`;
+            badge.className = `badge ${badgeClass}`;
+
+        } catch (error) {
+            badge.innerHTML = '❓ UNKNOWN';
+            badge.className = 'badge bg-secondary';
         }
-        statusHTML += `<br><small>(${daysLeft} days)</small>`;
-        statusCell.innerHTML = statusHTML;
     });
 });
 </script>
