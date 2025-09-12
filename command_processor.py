@@ -711,3 +711,35 @@ Use `/help` for complete command list!"""
                 success=False,
                 message=f"❌ **Upgrade Error:** {str(e)}\n\nPlease try again or contact support."
             )
+
+    def _handle_testmail(self, args: List[str], user_data: Dict) -> CommandResponse:
+    """Test email delivery with detailed error reporting"""
+    try:
+        from flask_mail import Message
+        
+        test_email = args[0] if args else "divyanshukumar6090@gmail.com"
+        
+        print(f"📧 Testing email to: {test_email}")
+        print(f"📧 SMTP Server: smtp.gmail.com:587")
+        
+        msg = Message(
+            subject="🧪 OTT Manager Test Email",
+            recipients=[test_email],
+            body="This is a test email from OTT Manager. If you receive this, email delivery is working!",
+            sender="divyanshukumar6090@gmail.com"
+        )
+        
+        self.mail.send(msg)
+        print("📧 Email sent successfully")
+        
+        return CommandResponse(
+            success=True,
+            message=f"✅ **Test email sent to:** {test_email}\\n\\nCheck your inbox in 1-2 minutes.\\n\\nIf you don't receive it, there's an SMTP configuration issue."
+        )
+        
+    except Exception as e:
+        print(f"📧 Email Error: {str(e)}")
+        return CommandResponse(
+            success=False,
+            message=f"❌ **Email test failed:** {str(e)}\\n\\n**Common fixes:**\\n• Check Gmail App Password\\n• Verify environment variables\\n• Enable 2-Factor Authentication"
+        )
