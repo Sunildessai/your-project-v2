@@ -713,33 +713,30 @@ Use `/help` for complete command list!"""
             )
 
     def _handle_testmail(self, args: List[str], user_data: Dict) -> CommandResponse:
-    """Test email delivery with detailed error reporting"""
+    """Test email delivery with debug info"""
     try:
         from flask_mail import Message
+        import os
         
-        test_email = args[0] if args else "divyanshukumar6090@gmail.com"
-        
-        print(f"📧 Testing email to: {test_email}")
-        print(f"📧 SMTP Server: smtp.gmail.com:587")
+        smtp_user = os.environ.get('EMAIL_USER', 'Not set')
+        test_recipient = smtp_user  # Send to same email first
         
         msg = Message(
-            subject="🧪 OTT Manager Test Email",
-            recipients=[test_email],
-            body="This is a test email from OTT Manager. If you receive this, email delivery is working!",
-            sender="divyanshukumar6090@gmail.com"
+            subject="🧪 OTT Manager Email Test",
+            recipients=[test_recipient],
+            body=f"Test email from OTT Manager\nTime: {datetime.now()}",
+            sender=smtp_user
         )
         
         self.mail.send(msg)
-        print("📧 Email sent successfully")
         
         return CommandResponse(
             success=True,
-            message=f"✅ **Test email sent to:** {test_email}\\n\\nCheck your inbox in 1-2 minutes.\\n\\nIf you don't receive it, there's an SMTP configuration issue."
+            message=f"✅ **Email test sent**\n\n📧 **From/To:** {smtp_user}\n\nCheck sunildessa1001@gmail.com inbox!"
         )
         
     except Exception as e:
-        print(f"📧 Email Error: {str(e)}")
         return CommandResponse(
             success=False,
-            message=f"❌ **Email test failed:** {str(e)}\\n\\n**Common fixes:**\\n• Check Gmail App Password\\n• Verify environment variables\\n• Enable 2-Factor Authentication"
+            message=f"❌ **Email failed:** {str(e)}\n\n**Most likely:** Need Gmail App Password"
         )
