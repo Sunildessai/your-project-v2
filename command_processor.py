@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Unified Command Processor - FIXED VERSION
-Handles all commands from both Telegram and Web interfaces with proper validation
+Unified Command Processor with Telegram ID Tracking
+Handles all commands from both Telegram and Web interfaces
 """
 
 import os
@@ -68,6 +68,7 @@ https://your-project-v2.onrender.com
 
 **🚀 Quick Start:**
 • `/add username email service expiry` - Add subscription
+• `/add username email service expiry amount telegram_id` - Add with tracking
 • `/list` - View all subscriptions  
 • `/help` - Show all commands
 
@@ -80,75 +81,36 @@ Use `/help` for complete command list!"""
             web_redirect='/dashboard'
         )
 
-    def _handle_list(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /list command"""
-        try:
-            chat_id = user_data.get('telegram_chat_id')
-            subscriptions = list(self.db.collection('subscriptions').where('telegram_chat_id', '==', chat_id).stream())
-
-            if not subscriptions:
-                return CommandResponse(
-                    success=True,
-                    message="📋 **No Subscriptions Found**\n\nGet started by adding your first subscription:\n\n**Example:**\n`/add john_netflix john@gmail.com Netflix 2025-12-31`\n\nThis adds Netflix subscription for john_netflix that expires on Dec 31, 2025.",
-                    data={'subscriptions': []}
-                )
-
-            message = "📋 **Your Subscriptions:**\n\n"
-            today = datetime.now().date()
-            subscription_data = []
-
-            for i, sub in enumerate(subscriptions, 1):
-                sub_data = sub.to_dict()
-                sub_data['id'] = sub.id
-                subscription_data.append(sub_data)
-
-                try:
-                    expiry_date = datetime.strptime(sub_data['expiry'], '%Y-%m-%d').date()
-                    days_left = (expiry_date - today).days
-
-                    if days_left < 0:
-                        status = "🔴 EXPIRED"
-                    elif days_left <= 3:
-                        status = "🟡 EXPIRING SOON"
-                    else:
-                        status = "✅ ACTIVE"
-                except:
-                    status = "❓ UNKNOWN"
-                    days_left = 0
-
-                message += f"**{i}. {sub_data['service']}** {status}\n"
-                message += f"🆔 ID: `{sub.id[:8]}`\n"
-                message += f"👤 Username: `{sub_data['username']}`\n"
-                message += f"📧 Email: `{sub_data['email']}`\n"
-                message += f"💰 Amount: ₹{sub_data.get('amount_received', 'N/A')}\n"
-                message += f"📅 Expires: `{sub_data['expiry']}` ({days_left} days)\n"
-                message += "─────────────────────\n\n"
-
-            message += "💡 **Tip:** Use `/delete ID` to remove a subscription (e.g., `/delete " + subscriptions[0].id[:8] + "`)"
-
-            return CommandResponse(
-                success=True,
-                message=message,
-                data={'subscriptions': subscription_data}
-            )
-
-        except Exception as e:
-            return CommandResponse(
-                success=False,
-                message=f"❌ **Error fetching subscriptions:** {str(e)}\n\nPlease try again or contact support."
-            )
-
     def _handle_add(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /add command with improved validation"""
+        """Handle /add command with optional telegram_id tracking"""
         if len(args) < 4:
             return CommandResponse(
                 success=False,
-                message='❌ **Missing required information!**\n\n**Usage:** `/add username email service expiry [amount]`\n\n**Examples:**\n• `/add john_netflix john@gmail.com Netflix 2025-12-31`\n• `/add jane_spotify jane@gmail.com Spotify 2025-06-15 299`\n\n**Required:**\n• `username` - Your account username\n• `email` - Your email address\n• `service` - Service name (Netflix, Disney+, etc.)\n• `expiry` - Expiry date (YYYY-MM-DD format)\n\n**Optional:**\n• `amount` - Amount paid (₹)'
+                message='❌ **Missing required information!**\n\n**Usage:** `/add username email service expiry [amount] [telegram_id]`\n\n**Examples:**\n• `/add john_netflix john@gmail.com Netflix 2025-12-31`\n• `/add jane_spotify jane@gmail.com Spotify 2025-06-15 299`\n• `/add mike_disney mike@gmail.com Disney+ 2025-03-15 399 @mike_official`\n• `/add sara_prime sara@gmail.com Prime 2025-08-20 199 123456789`\n\n**Required:**\n• `username` - Account username for the service\n• `email` - Customer\'s email address\n• `service` - Service name (Netflix, Disney+, etc.)\n• `expiry` - Expiry date (YYYY-MM-DD format)\n\n**Optional:**\n• `amount` - Amount paid (₹)\n• `telegram_id` - Customer\'s @username or numeric ID (for tracking)'
             )
 
         try:
             username, email, service, expiry = args[:4]
-            amount = ' '.join(args[4:]) if len(args) > 4 else "0"
+
+            # Parse optional amount and telegram_id
+            remaining_args = args[4:] if len(args) > 4 else []
+            amount = "0"
+            telegram_id = None
+
+            # Smart parsing of remaining arguments
+            if len(remaining_args) == 1:
+                # Only one extra argument - could be amount or telegram_id
+                arg = remaining_args[0]
+                if arg.startswith('@') or (arg.isdigit() and len(arg) > 3):
+                    # Looks like telegram_id
+                    telegram_id = arg
+                else:
+                    # Probably amount
+                    amount = arg
+            elif len(remaining_args) >= 2:
+                # Two or more arguments - first is amount, second is telegram_id
+                amount = remaining_args[0]
+                telegram_id = remaining_args[1]
 
             # Validate email format
             if '@' not in email or '.' not in email:
@@ -196,11 +158,23 @@ Use `/help` for complete command list!"""
                 'note': "Added via unified command processor"
             }
 
+            # Add telegram_id if provided
+            if telegram_id:
+                subscription_data['customer_telegram_id'] = telegram_id
+
             doc_ref = self.db.collection('subscriptions').add(subscription_data)
+
+            # Build success message
+            success_message = f"✅ **Subscription Added Successfully!**\n\n🎬 **Service:** {service}\n👤 **Username:** {username}\n📧 **Email:** {email}\n💰 **Amount:** ₹{amount}\n📅 **Expires:** {expiry}\n🆔 **ID:** `{doc_ref[1].id[:8]}`"
+
+            if telegram_id:
+                success_message += f"\n📱 **Telegram ID:** `{telegram_id}`"
+
+            success_message += "\n\n💡 Use `/list` to see all your subscriptions!"
 
             return CommandResponse(
                 success=True,
-                message=f"✅ **Subscription Added Successfully!**\n\n🎬 **Service:** {service}\n👤 **Username:** {username}\n📧 **Email:** {email}\n💰 **Amount:** ₹{amount}\n📅 **Expires:** {expiry}\n🆔 **ID:** `{doc_ref[1].id[:8]}`\n\n💡 Use `/list` to see all your subscriptions!",
+                message=success_message,
                 data={'subscription_id': doc_ref[1].id, 'subscription': subscription_data},
                 web_redirect='/dashboard'
             )
@@ -209,6 +183,155 @@ Use `/help` for complete command list!"""
             return CommandResponse(
                 success=False,
                 message=f"❌ **Error adding subscription:** {str(e)}\n\nPlease check your information and try again."
+            )
+
+    def _handle_list(self, args: List[str], user_data: Dict) -> CommandResponse:
+        """Handle /list command - now shows telegram_id"""
+        try:
+            chat_id = user_data.get('telegram_chat_id')
+            subscriptions = list(self.db.collection('subscriptions').where('telegram_chat_id', '==', chat_id).stream())
+
+            if not subscriptions:
+                return CommandResponse(
+                    success=True,
+                    message="📋 **No Subscriptions Found**\n\nGet started by adding your first subscription:\n\n**Examples:**\n`/add john_netflix john@gmail.com Netflix 2025-12-31`\n\n**With Telegram ID:**\n`/add john_netflix john@gmail.com Netflix 2025-12-31 499 @john_doe`",
+                    data={'subscriptions': []}
+                )
+
+            message = "📋 **Your Subscriptions:**\n\n"
+            today = datetime.now().date()
+            subscription_data = []
+
+            for i, sub in enumerate(subscriptions, 1):
+                sub_data = sub.to_dict()
+                sub_data['id'] = sub.id
+                subscription_data.append(sub_data)
+
+                try:
+                    expiry_date = datetime.strptime(sub_data['expiry'], '%Y-%m-%d').date()
+                    days_left = (expiry_date - today).days
+
+                    if days_left < 0:
+                        status = "🔴 EXPIRED"
+                    elif days_left <= 3:
+                        status = "🟡 EXPIRING SOON"
+                    else:
+                        status = "✅ ACTIVE"
+                except:
+                    status = "❓ UNKNOWN"
+                    days_left = 0
+
+                message += f"**{i}. {sub_data['service']}** {status}\n"
+                message += f"🆔 ID: `{sub.id[:8]}`\n"
+                message += f"👤 Username: `{sub_data['username']}`\n"
+                message += f"📧 Email: `{sub_data['email']}`\n"
+                message += f"💰 Amount: ₹{sub_data.get('amount_received', 'N/A')}\n"
+                message += f"📅 Expires: `{sub_data['expiry']}` ({days_left} days)\n"
+
+                # Show telegram_id if available
+                if sub_data.get('customer_telegram_id'):
+                    message += f"📱 Telegram: `{sub_data['customer_telegram_id']}`\n"
+
+                message += "─────────────────────\n\n"
+
+            message += "💡 **Tip:** Use `/delete ID` to remove a subscription (e.g., `/delete " + subscriptions[0].id[:8] + "`)"
+
+            return CommandResponse(
+                success=True,
+                message=message,
+                data={'subscriptions': subscription_data}
+            )
+
+        except Exception as e:
+            return CommandResponse(
+                success=False,
+                message=f"❌ **Error fetching subscriptions:** {str(e)}\n\nPlease try again or contact support."
+            )
+
+    def _handle_search(self, args: List[str], user_data: Dict) -> CommandResponse:
+        """Handle /search command - now includes telegram_id in search"""
+        if not args:
+            return CommandResponse(
+                success=False,
+                message='❌ **Search keyword required!**\n\n**Usage:** `/search keyword`\n\n**Examples:**\n• `/search Netflix` - Find Netflix subscriptions\n• `/search john@gmail.com` - Find by email\n• `/search john_netflix` - Find by username\n• `/search @john_doe` - Find by Telegram ID\n\n**💡 What you can search for:**\n• Service names (Netflix, Spotify, Disney+)\n• Email addresses\n• Usernames\n• Telegram IDs\n• Any part of subscription details'
+            )
+
+        try:
+            search_query = args[0].lower()
+            chat_id = user_data.get('telegram_chat_id')
+
+            subscriptions = list(self.db.collection('subscriptions').where('telegram_chat_id', '==', chat_id).stream())
+
+            if not subscriptions:
+                return CommandResponse(
+                    success=True,
+                    message="📋 **No subscriptions to search**\n\nYou don't have any subscriptions yet.\n\n**Get started:**\n`/add john_netflix john@gmail.com Netflix 2025-12-31`",
+                    data={'results': []}
+                )
+
+            # Filter subscriptions
+            matching_subs = []
+            for sub in subscriptions:
+                sub_data = sub.to_dict()
+                username = sub_data.get('username', '').lower()
+                email = sub_data.get('email', '').lower()
+                service = sub_data.get('service', '').lower()
+                telegram_id = sub_data.get('customer_telegram_id', '').lower()
+
+                if (search_query in username or search_query in email or 
+                    search_query in service or search_query in telegram_id):
+                    sub_data['id'] = sub.id
+                    matching_subs.append(sub_data)
+
+            if not matching_subs:
+                return CommandResponse(
+                    success=True,
+                    message=f"🔍 **No matches found for** `{args[0]}`\n\n**Search tips:**\n• Try partial matches (e.g., 'Net' for Netflix)\n• Search by service, email, username, or Telegram ID\n• Check spelling\n\n**Your subscriptions:**\nUse `/list` to see all {len(subscriptions)} subscription(s)",
+                    data={'results': []}
+                )
+
+            # Format results
+            message = f"🔍 **Found {len(matching_subs)} result(s) for** `{args[0]}`:\n\n"
+            today = datetime.now().date()
+
+            for i, sub_data in enumerate(matching_subs, 1):
+                try:
+                    expiry_date = datetime.strptime(sub_data['expiry'], '%Y-%m-%d').date()
+                    days_left = (expiry_date - today).days
+                    if days_left < 0:
+                        status = "🔴 EXPIRED"
+                    elif days_left <= 7:
+                        status = "🟡 EXPIRING SOON"
+                    else:
+                        status = "✅ ACTIVE"
+                except:
+                    status = "❓ UNKNOWN"
+                    days_left = 0
+
+                message += f"**{i}. {sub_data['service']}** {status}\n"
+                message += f"🆔 ID: `{sub_data['id'][:8]}`\n"
+                message += f"👤 Username: `{sub_data['username']}`\n"
+                message += f"📧 Email: `{sub_data['email']}`\n"
+                message += f"📅 Expires: `{sub_data['expiry']}` ({days_left} days)\n"
+
+                # Show telegram_id if available
+                if sub_data.get('customer_telegram_id'):
+                    message += f"📱 Telegram: `{sub_data['customer_telegram_id']}`\n"
+
+                message += "─────────────────────\n\n"
+
+            message += f"💡 **Tips:**\n• Use `/delete ID` to remove any subscription\n• Use `/list` to see all {len(subscriptions)} subscription(s)"
+
+            return CommandResponse(
+                success=True,
+                message=message,
+                data={'results': matching_subs}
+            )
+
+        except Exception as e:
+            return CommandResponse(
+                success=False,
+                message=f"❌ **Search Error:** {str(e)}\n\nPlease try again with a different keyword."
             )
 
     def _handle_delete(self, args: List[str], user_data: Dict) -> CommandResponse:
@@ -259,9 +382,17 @@ Use `/help` for complete command list!"""
             # Delete subscription
             self.db.collection('subscriptions').document(target_id).delete()
 
+            delete_message = f"✅ **Successfully Deleted!**\n\n🎬 **Service:** {target_sub.get('service', 'Unknown')}\n👤 **Username:** {target_sub.get('username', 'Unknown')}\n📧 **Email:** {target_sub.get('email', 'Unknown')}\n🗑️ **ID:** `{target_id[:8]}`"
+
+            # Show telegram_id if it was there
+            if target_sub.get('customer_telegram_id'):
+                delete_message += f"\n📱 **Telegram ID:** `{target_sub['customer_telegram_id']}`"
+
+            delete_message += "\n\n💡 Use `/list` to see your remaining subscriptions."
+
             return CommandResponse(
                 success=True,
-                message=f"✅ **Successfully Deleted!**\n\n🎬 **Service:** {target_sub.get('service', 'Unknown')}\n👤 **Username:** {target_sub.get('username', 'Unknown')}\n📧 **Email:** {target_sub.get('email', 'Unknown')}\n🗑️ **ID:** `{target_id[:8]}`\n\n💡 Use `/list` to see your remaining subscriptions.",
+                message=delete_message,
                 data={'deleted_subscription': target_sub},
                 web_redirect='/dashboard'
             )
@@ -270,85 +401,6 @@ Use `/help` for complete command list!"""
             return CommandResponse(
                 success=False,
                 message=f"❌ **Delete Error:** {str(e)[:100]}\n\nPlease try again or contact support."
-            )
-
-    def _handle_search(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /search command with improved validation"""
-        if not args:
-            return CommandResponse(
-                success=False,
-                message='❌ **Search keyword required!**\n\n**Usage:** `/search keyword`\n\n**Examples:**\n• `/search Netflix` - Find Netflix subscriptions\n• `/search john@gmail.com` - Find by email\n• `/search john_netflix` - Find by username\n\n**💡 What you can search for:**\n• Service names (Netflix, Spotify, Disney+)\n• Email addresses\n• Usernames\n• Any part of subscription details'
-            )
-
-        try:
-            search_query = args[0].lower()
-            chat_id = user_data.get('telegram_chat_id')
-
-            subscriptions = list(self.db.collection('subscriptions').where('telegram_chat_id', '==', chat_id).stream())
-
-            if not subscriptions:
-                return CommandResponse(
-                    success=True,
-                    message="📋 **No subscriptions to search**\n\nYou don't have any subscriptions yet.\n\n**Get started:**\n`/add john_netflix john@gmail.com Netflix 2025-12-31`",
-                    data={'results': []}
-                )
-
-            # Filter subscriptions
-            matching_subs = []
-            for sub in subscriptions:
-                sub_data = sub.to_dict()
-                username = sub_data.get('username', '').lower()
-                email = sub_data.get('email', '').lower()
-                service = sub_data.get('service', '').lower()
-
-                if (search_query in username or search_query in email or search_query in service):
-                    sub_data['id'] = sub.id
-                    matching_subs.append(sub_data)
-
-            if not matching_subs:
-                return CommandResponse(
-                    success=True,
-                    message=f"🔍 **No matches found for** `{args[0]}`\n\n**Search tips:**\n• Try partial matches (e.g., 'Net' for Netflix)\n• Search by service name, email, or username\n• Check spelling\n\n**Your subscriptions:**\nUse `/list` to see all {len(subscriptions)} subscription(s)",
-                    data={'results': []}
-                )
-
-            # Format results
-            message = f"🔍 **Found {len(matching_subs)} result(s) for** `{args[0]}`:\n\n"
-            today = datetime.now().date()
-
-            for i, sub_data in enumerate(matching_subs, 1):
-                try:
-                    expiry_date = datetime.strptime(sub_data['expiry'], '%Y-%m-%d').date()
-                    days_left = (expiry_date - today).days
-                    if days_left < 0:
-                        status = "🔴 EXPIRED"
-                    elif days_left <= 7:
-                        status = "🟡 EXPIRING SOON"
-                    else:
-                        status = "✅ ACTIVE"
-                except:
-                    status = "❓ UNKNOWN"
-                    days_left = 0
-
-                message += f"**{i}. {sub_data['service']}** {status}\n"
-                message += f"🆔 ID: `{sub_data['id'][:8]}`\n"
-                message += f"👤 Username: `{sub_data['username']}`\n"
-                message += f"📧 Email: `{sub_data['email']}`\n"
-                message += f"📅 Expires: `{sub_data['expiry']}` ({days_left} days)\n"
-                message += "─────────────────────\n\n"
-
-            message += f"💡 **Tips:**\n• Use `/delete ID` to remove any subscription\n• Use `/list` to see all {len(subscriptions)} subscription(s)"
-
-            return CommandResponse(
-                success=True,
-                message=message,
-                data={'results': matching_subs}
-            )
-
-        except Exception as e:
-            return CommandResponse(
-                success=False,
-                message=f"❌ **Search Error:** {str(e)}\n\nPlease try again with a different keyword."
             )
 
     def _handle_help(self, args: List[str], user_data: Dict) -> CommandResponse:
@@ -414,7 +466,7 @@ Use `/help` for complete command list!"""
                 message += "💡 **Tips:**\n"
                 message += "• Use `/help command_name` for detailed help\n"
                 message += "• Example: `/help add` for add command help\n"
-                message += "• Start with `/add` to add your first subscription!"
+                message += "• Add Telegram ID for better tracking: `/add user email service date amount @telegram_id`"
 
                 return CommandResponse(
                     success=True,
@@ -429,7 +481,7 @@ Use `/help` for complete command list!"""
             )
 
     def _handle_stats(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /stats command with better formatting"""
+        """Handle /stats command with telegram_id info"""
         try:
             chat_id = user_data.get('telegram_chat_id')
             subscriptions = list(self.db.collection('subscriptions').where('telegram_chat_id', '==', chat_id).stream())
@@ -439,11 +491,17 @@ Use `/help` for complete command list!"""
             expiring_subs = 0
             expired_subs = 0
             total_amount = 0
+            tracked_customers = 0
 
             today = datetime.now().date()
 
             for sub in subscriptions:
                 sub_data = sub.to_dict()
+
+                # Count telegram_id tracked subscriptions
+                if sub_data.get('customer_telegram_id'):
+                    tracked_customers += 1
+
                 try:
                     expiry_date = datetime.strptime(sub_data['expiry'], '%Y-%m-%d').date()
                     days_left = (expiry_date - today).days
@@ -482,6 +540,7 @@ Use `/help` for complete command list!"""
 🟡 **Expiring (≤7 days):** {expiring_subs}
 🔴 **Expired:** {expired_subs}
 💵 **Total Spent:** ₹{total_amount:.0f}
+📱 **With Telegram ID:** {tracked_customers}/{total_subs}
 
 📅 **Plan Details:**
 ⏳ **Validity:** {'Lifetime' if not user_data.get('expiry_date') else user_data['expiry_date']}
@@ -489,6 +548,9 @@ Use `/help` for complete command list!"""
 
             if expiring_subs > 0:
                 message += f"\n\n🚨 **Action Required:**\n{expiring_subs} subscription(s) expiring soon!\nUse `/sendreminder` to get email notifications."
+
+            if tracked_customers < total_subs:
+                message += f"\n\n💡 **Tip:** Add Telegram IDs to {total_subs - tracked_customers} more subscriptions for better tracking!"
 
             return CommandResponse(
                 success=True,
@@ -499,6 +561,7 @@ Use `/help` for complete command list!"""
                         'active_subscriptions': active_subs,
                         'expiring_subscriptions': expiring_subs,
                         'expired_subscriptions': expired_subs,
+                        'tracked_customers': tracked_customers,
                         'total_amount': total_amount,
                         'plan_info': plan_info,
                         'user_info': user_data
@@ -539,31 +602,46 @@ Use `/help` for complete command list!"""
                     message="✅ **No urgent reminders needed!**\n\nNo subscriptions are expiring in the next 7 days.\n\n💡 **Tip:** Use `/list` to see all subscription expiry dates."
                 )
 
-            # Get the first email for sending (or use user email if available)
+            # Get the first email for sending
             recipient_email = expiring_subs[0]['email']
+
+            # Build email content
+            email_content = f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #333;">Dear {user_data['telegram_username']},</h2>
+                <p>You have {len(expiring_subs)} subscription(s) expiring soon:</p>
+                <ul style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
+            """
+
+            for sub in expiring_subs:
+                email_content += f"<li><strong>{sub['service']}</strong> ({sub['username']}) - Expires: {sub['expiry']}"
+                if sub.get('customer_telegram_id'):
+                    email_content += f" | Customer: {sub['customer_telegram_id']}"
+                email_content += "</li>"
+
+            email_content += """
+                </ul>
+                <p>Please renew these subscriptions to avoid service interruption.</p>
+                <p style="margin-top: 30px;">Best regards,<br><strong>OTT Manager Team</strong></p>
+                <hr>
+                <small style="color: #666;">Manage your subscriptions: <a href="https://your-project-v2.onrender.com">OTT Manager Dashboard</a></small>
+            </div>
+            """
 
             # Send email reminder
             msg = Message(
                 subject="🔔 OTT Subscription Expiry Reminder",
                 recipients=[recipient_email],
-                html=f"""
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #333;">Dear {user_data['telegram_username']},</h2>
-                    <p>You have {len(expiring_subs)} subscription(s) expiring soon:</p>
-                    <ul style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
-                    {"".join([f"<li><strong>{sub['service']}</strong> - Expires: {sub['expiry']}</li>" for sub in expiring_subs])}
-                    </ul>
-                    <p>Please renew these subscriptions to avoid service interruption.</p>
-                    <p style="margin-top: 30px;">Best regards,<br><strong>OTT Manager Team</strong></p>
-                    <hr>
-                    <small style="color: #666;">Manage your subscriptions: <a href="https://your-project-v2.onrender.com">OTT Manager Dashboard</a></small>
-                </div>
-                """
+                html=email_content
             )
 
             self.mail.send(msg)
 
-            sub_list = "\n".join([f"• {sub['service']} - {sub['expiry']}" for sub in expiring_subs])
+            sub_list = "\n".join([
+                f"• {sub['service']} ({sub['username']}) - {sub['expiry']}" + 
+                (f" | {sub['customer_telegram_id']}" if sub.get('customer_telegram_id') else "")
+                for sub in expiring_subs
+            ])
 
             return CommandResponse(
                 success=True,
@@ -578,7 +656,7 @@ Use `/help` for complete command list!"""
             )
 
     def _handle_upgrade(self, args: List[str], user_data: Dict) -> CommandResponse:
-        """Handle /upgrade command with better plan display"""
+        """Handle /upgrade command"""
         try:
             current_plan = user_data['plan_type']
 
