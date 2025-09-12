@@ -608,7 +608,7 @@ Use `/help` for complete command list!"""
             # Build email content
             email_content = f"""
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #333;">Dear {user_data['telegram_username']},</h2>
+                <h2 style="color: #333;">Dear {user_data.get('telegram_username', 'User')},</h2>
                 <p>You have {len(expiring_subs)} subscription(s) expiring soon:</p>
                 <ul style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
             """
@@ -713,30 +713,29 @@ Use `/help` for complete command list!"""
             )
 
     def _handle_testmail(self, args: List[str], user_data: Dict) -> CommandResponse:
-    """Test email delivery with debug info"""
-    try:
-        from flask_mail import Message
-        import os
-        
-        smtp_user = os.environ.get('EMAIL_USER', 'Not set')
-        test_recipient = smtp_user  # Send to same email first
-        
-        msg = Message(
-            subject="🧪 OTT Manager Email Test",
-            recipients=[test_recipient],
-            body=f"Test email from OTT Manager\nTime: {datetime.now()}",
-            sender=smtp_user
-        )
-        
-        self.mail.send(msg)
-        
-        return CommandResponse(
-            success=True,
-            message=f"✅ **Email test sent**\n\n📧 **From/To:** {smtp_user}\n\nCheck sunildessa1001@gmail.com inbox!"
-        )
-        
-    except Exception as e:
-        return CommandResponse(
-            success=False,
-            message=f"❌ **Email failed:** {str(e)}\n\n**Most likely:** Need Gmail App Password"
-        )
+        """Test email delivery"""
+        try:
+            from flask_mail import Message
+
+            sender = "sunildessa1001@gmail.com"
+            recipient = "divyanshukumar6090@gmail.com"
+
+            msg = Message(
+                subject="🧪 OTT Manager Email Test",
+                recipients=[recipient],
+                body=f"SMTP test from {sender} to {recipient}\nTime: {datetime.now()}",
+                sender=sender
+            )
+
+            self.mail.send(msg)
+
+            return CommandResponse(
+                success=True,
+                message=f"✅ **SMTP Test Done**\n\n📧 **From:** {sender}\n📧 **To:** {recipient}\n\nCheck divyanshukumar6090@gmail.com inbox!"
+            )
+
+        except Exception as e:
+            return CommandResponse(
+                success=False,
+                message=f"❌ **SMTP Failed:** {str(e)}\n\n**Solution:** Check App Password for sunildessa1001@gmail.com"
+            )
